@@ -1,0 +1,35 @@
+{
+  "name": "pi-codex-imagegen",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi package that adds a Codex-backed gpt-image-2 image generation tool and skill.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lulucatdev/pi-codex-imagegen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lulucatdev/pi-codex-imagegen/issues"
+  },
+  "homepage": "https://github.com/lulucatdev/pi-codex-imagegen#readme",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "image-generation",
+    "codex",
+    "gpt-image-2"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/codex-imagegen.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
