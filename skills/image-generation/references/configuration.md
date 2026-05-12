@@ -6,21 +6,19 @@ The package provides the `image_generation` and `view_image` extension tools plu
 
 Tool availability is dynamic and follows the current selected Pi model.
 
-- `image_generation`: enabled only for `openai-codex` models that advertise image input support.
+- `image_generation`: enabled for `openai-codex` models.
 - `view_image`: enabled for models that advertise image input support.
 - `view_image.detail = "original"`: exposed only for image-capable Codex-family models.
 
 When the model changes, the extension re-runs routing and updates active tools. Non-image tools that were already active are preserved.
 
-## Native routing
+## Image generation routing
 
-`image_generation` is exposed to the agent as a normal function tool, then rewritten in `before_provider_request` to the native OpenAI Codex Responses tool:
+`image_generation` is exposed to the agent as a normal function tool with a `prompt` parameter. When executed, it calls the Codex Responses image generation endpoint, extracts the returned `image_generation_call.result`, and writes the PNG locally under `.pi/openai-codex-images/`.
 
-```json
-{ "type": "image_generation", "output_format": "png" }
-```
+The latest generated image is also mirrored to `.pi/openai-codex-images/latest.png`.
 
-The local function should not execute. If it does, the current provider/model is unsupported or the request was not rewritten.
+This avoids depending on Pi core provider parsing for native `image_generation_call` response stream items.
 
 ## Install
 

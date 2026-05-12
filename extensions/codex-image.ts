@@ -1,5 +1,6 @@
-import { stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import {
 	createReadTool,
 	type AgentToolResult,
@@ -7,41 +8,28 @@ import {
 	type ExtensionContext,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Type, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
 
 const STATUS_KEY = "codex-image";
 const STATUS_TEXT = "Codex image";
 const IMAGE_GENERATION_TOOL_NAME = "image_generation";
 const VIEW_IMAGE_TOOL_NAME = "view_image";
 const CODEX_IMAGE_TOOL_NAMES = [IMAGE_GENERATION_TOOL_NAME, VIEW_IMAGE_TOOL_NAME];
-const IMAGE_GENERATION_UNSUPPORTED_MESSAGE = "image_generation is only available with image-capable openai-codex models";
-const IMAGE_GENERATION_LOCAL_EXECUTION_MESSAGE = "image_generation is a native openai-codex provider tool and should not execute locally";
+const IMAGE_GENERATION_UNSUPPORTED_MESSAGE = "image_generation is only available with openai-codex models";
 const VIEW_IMAGE_UNSUPPORTED_MESSAGE = "view_image is not allowed because the current model does not support image inputs";
 const DETAIL_DESCRIPTION = "Use `original` to preserve the file's original resolution; omit for default resized behavior.";
+const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex/responses";
+const JWT_CLAIM_PATH = "https://api.openai.com/auth";
 
-const IMAGE_GENERATION_PARAMETERS = Type.Unsafe<Record<string, never>>({
-	type: "object",
-	additionalProperties: false,
+const IMAGE_GENERATION_PARAMETERS = Type.Object({
+	prompt: Type.String({ description: "Detailed image prompt describing what to generate." }),
 });
+
+type ImageGenerationParams = Static<typeof IMAGE_GENERATION_PARAMETERS>;
 
 interface ExtensionState {
 	enabled: boolean;
 	previousToolNames?: string[];
-}
-
-interface FunctionToolPayload {
-	type?: unknown;
-	name?: unknown;
-}
-
-interface ResponsesPayload {
-	tools?: unknown[];
-	[key: string]: unknown;
-}
-
-interface ResponsesImageGenerationTool {
-	type: "image_generation";
-	output_format: "png";
 }
 
 interface ViewImageParams {
@@ -56,6 +44,11 @@ interface ViewImageReader {
 interface ViewImageReaders {
 	resized: ViewImageReader;
 	original: ViewImageReader;
+}
+
+interface CodexAuth {
+	access?: string;
+	accountId?: string;
 }
 
 type ViewImageParameters = ReturnType<typeof createViewImageParameters>;
@@ -73,7 +66,7 @@ function isCodexImageContext(ctx: ExtensionContext): boolean {
 }
 
 function supportsNativeImageGeneration(model: ExtensionContext["model"]): boolean {
-	return isOpenAICodexModel(model) && supportsImageInputs(model);
+	return isOpenAICodexModel(model);
 }
 
 function supportsOriginalImageDetail(model: ExtensionContext["model"]): boolean {
@@ -83,39 +76,146 @@ function supportsOriginalImageDetail(model: ExtensionContext["model"]): boolean 
 	return supportsImageInputs(model) && (provider.includes("codex") || api.includes("codex") || id.includes("codex"));
 }
 
-function isImageGenerationFunctionTool(tool: unknown): tool is FunctionToolPayload {
-	return !!tool && typeof tool === "object" && (tool as FunctionToolPayload).type === "function" && (tool as FunctionToolPayload).name === IMAGE_GENERATION_TOOL_NAME;
+function parseJwtAccountId(token: string): string | undefined {
+	try {
+		const [, payload] = token.split(".");
+		if (!payload) return undefined;
+		const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+		return decoded?.[JWT_CLAIM_PATH]?.chatgpt_account_id;
+	} catch {
+		return undefined;
+	}
 }
 
-function rewriteNativeImageGenerationTool(payload: unknown, model: ExtensionContext["model"]): unknown {
-	if (!supportsNativeImageGeneration(model) || !payload || typeof payload !== "object") return payload;
-	const tools = (payload as ResponsesPayload).tools;
-	if (!Array.isArray(tools)) return payload;
+async function readCodexAuth(): Promise<{ token: string; accountId: string }> {
+	const authPath = join(homedir(), ".pi", "agent", "auth.json");
+	const raw = await readFile(authPath, "utf8");
+	const auth = JSON.parse(raw)?.["openai-codex"] as CodexAuth | undefined;
+	const token = auth?.access;
+	if (!token) throw new Error(`Missing openai-codex OAuth access token in ${authPath}`);
+	const accountId = auth.accountId || parseJwtAccountId(token);
+	if (!accountId) throw new Error("Unable to determine ChatGPT account id for openai-codex image generation");
+	return { token, accountId };
+}
 
-	let rewritten = false;
-	const nextTools = tools.map((tool) => {
-		if (!isImageGenerationFunctionTool(tool)) return tool;
-		rewritten = true;
-		const nativeTool: ResponsesImageGenerationTool = { type: "image_generation", output_format: "png" };
-		return nativeTool;
+function parseSseEvents(text: string): unknown[] {
+	const events: unknown[] = [];
+	let dataLines: string[] = [];
+	const flush = () => {
+		if (dataLines.length === 0) return;
+		const data = dataLines.join("\n");
+		dataLines = [];
+		if (data === "[DONE]") return;
+		try {
+			events.push(JSON.parse(data));
+		} catch {
+			// Ignore non-JSON keepalive/debug chunks.
+		}
+	};
+	for (const line of text.split(/\r?\n/)) {
+		if (line === "") {
+			flush();
+			continue;
+		}
+		if (line.startsWith("data: ")) dataLines.push(line.slice(6));
+	}
+	flush();
+	return events;
+}
+
+function findGeneratedImage(events: unknown[]): string | undefined {
+	for (const event of events) {
+		if (!event || typeof event !== "object") continue;
+		const item = (event as { item?: unknown }).item;
+		if (!item || typeof item !== "object") continue;
+		const typedItem = item as { type?: unknown; result?: unknown };
+		if (typedItem.type === "image_generation_call" && typeof typedItem.result === "string" && typedItem.result.length > 0) {
+			return typedItem.result;
+		}
+	}
+	return undefined;
+}
+
+async function generateCodexImage(prompt: string, modelId: string, signal?: AbortSignal): Promise<string> {
+	const { token, accountId } = await readCodexAuth();
+	const body = {
+		model: modelId,
+		store: false,
+		stream: true,
+		instructions: "Generate the requested image. Return no extra text.",
+		input: [{ role: "user", content: [{ type: "input_text", text: prompt }] }],
+		tools: [{ type: "image_generation", output_format: "png" }],
+		tool_choice: "auto",
+	};
+
+	const response = await fetch(DEFAULT_CODEX_BASE_URL, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${token}`,
+			"chatgpt-account-id": accountId,
+			originator: "pi",
+			"OpenAI-Beta": "responses=experimental",
+			accept: "text/event-stream",
+			"content-type": "application/json",
+			"User-Agent": "pi-codex-image",
+		},
+		body: JSON.stringify(body),
+		signal,
 	});
 
-	return rewritten ? { ...(payload as ResponsesPayload), tools: nextTools } : payload;
+	const text = await response.text();
+	if (!response.ok) {
+		throw new Error(`Codex image generation failed (${response.status} ${response.statusText}): ${text.slice(0, 1000)}`);
+	}
+
+	const imageBase64 = findGeneratedImage(parseSseEvents(text));
+	if (!imageBase64) {
+		throw new Error("Codex image generation completed without an image_generation_call result");
+	}
+	return imageBase64;
+}
+
+async function saveGeneratedImage(cwd: string, imageBase64: string): Promise<{ path: string; latestPath: string }> {
+	const outputDir = resolve(cwd, ".pi", "openai-codex-images");
+	await mkdir(outputDir, { recursive: true });
+	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const imagePath = join(outputDir, `${timestamp}.png`);
+	const latestPath = join(outputDir, "latest.png");
+	const data = Buffer.from(imageBase64, "base64");
+	await writeFile(imagePath, data);
+	await writeFile(latestPath, data);
+	return { path: imagePath, latestPath };
+}
+
+function prepareImageGenerationArguments(args: unknown): ImageGenerationParams {
+	if (args && typeof args === "object") {
+		const record = args as Record<string, unknown>;
+		const prompt = record.prompt ?? record.description ?? record.query;
+		if (typeof prompt === "string" && prompt.trim().length > 0) return { prompt: prompt.trim() };
+	}
+	return { prompt: String(args ?? "").trim() };
 }
 
 function createImageGenerationTool(): ToolDefinition<typeof IMAGE_GENERATION_PARAMETERS> {
 	const description =
-		"Generate an image. Outputs are saved under `.pi/openai-codex-images/` and mirrored to `.pi/openai-codex-images/latest.png`.";
+		"Generate a PNG image from a prompt. Outputs are saved under `.pi/openai-codex-images/` and mirrored to `.pi/openai-codex-images/latest.png`.";
 	return {
 		name: IMAGE_GENERATION_TOOL_NAME,
 		label: IMAGE_GENERATION_TOOL_NAME,
 		description,
-		promptSnippet: description,
+		promptSnippet: `${description} When the user asks to generate an image, call this tool with a concise but complete prompt.`,
 		parameters: IMAGE_GENERATION_PARAMETERS,
-		prepareArguments: () => ({}),
-		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+		prepareArguments: prepareImageGenerationArguments,
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			if (!supportsNativeImageGeneration(ctx.model)) throw new Error(IMAGE_GENERATION_UNSUPPORTED_MESSAGE);
-			throw new Error(IMAGE_GENERATION_LOCAL_EXECUTION_MESSAGE);
+			const prompt = params.prompt.trim();
+			if (!prompt) throw new Error("image_generation requires a non-empty prompt");
+			const imageBase64 = await generateCodexImage(prompt, ctx.model.id, signal);
+			const saved = await saveGeneratedImage(ctx.cwd, imageBase64);
+			return {
+				content: [{ type: "text", text: `Generated image saved to ${saved.path}\nLatest mirror: ${saved.latestPath}` }],
+				details: saved,
+			};
 		},
 	};
 }
@@ -273,9 +373,5 @@ export default function codexImage(pi: ExtensionAPI) {
 
 	pi.on("model_select", async (_event, ctx) => {
 		syncCodexImageTools(pi, ctx, state);
-	});
-
-	pi.on("before_provider_request", async (event, ctx) => {
-		return rewriteNativeImageGenerationTool(event.payload, ctx.model);
 	});
 }
