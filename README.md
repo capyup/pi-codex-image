@@ -14,25 +14,28 @@ It provides:
 
 `pi-codex-image` dynamically routes tools based on the currently selected model:
 
-- `image_generation` is active only when the current provider is `openai-codex` and the selected model advertises image input support.
+- `image_generation` is active when the current provider is `openai-codex`.
 - `view_image` is active for any selected model that advertises image input support.
 - Switching models triggers the router again, adding these tools when supported and removing them when unsupported.
 - Existing non-image active tools are preserved while image tools are added or removed.
 
-## Native image generation
+## Image generation
 
-The `image_generation` tool mirrors `pi-codex-conversion`'s native-tool approach:
+The `image_generation` tool is exposed as a normal Pi function tool. It accepts a prompt, calls the Codex Responses image generation endpoint, extracts the returned `image_generation_call.result`, and writes the PNG locally.
 
-1. The agent sees a function-style tool named `image_generation`.
-2. Before the provider request is sent, the extension rewrites that function tool into the OpenAI Codex Responses native tool:
+Generated images are saved under:
 
-```json
-{ "type": "image_generation", "output_format": "png" }
+```text
+.pi/openai-codex-images/
 ```
 
-3. The local function body is intentionally not used; if it executes locally, it throws an explanatory error.
+The newest image is also mirrored to:
 
-Generated image handling is therefore delegated to the active OpenAI Codex Responses provider, matching the referenced adapter's routing semantics.
+```text
+.pi/openai-codex-images/latest.png
+```
+
+This local tool implementation avoids depending on Pi core support for native `image_generation_call` stream items.
 
 ## View images
 
