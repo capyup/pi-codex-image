@@ -1,6 +1,6 @@
 # pi-codex-image
 
-Contributes the image portion of [IgorWarzocha/pi-codex-conversion](https://github.com/IgorWarzocha/pi-codex-conversion) as a focused Pi package. Current release version: `0.2.1`.
+Contributes the image portion of [IgorWarzocha/pi-codex-conversion](https://github.com/IgorWarzocha/pi-codex-conversion) as a focused Pi package. Current release version: `0.2.2`.
 
 This package ports the Codex-style `image_generation` and `view_image` capabilities without replacing Pi's full tool surface.
 
@@ -8,7 +8,7 @@ It provides:
 
 - Extension tool: `image_generation`
 - Extension tool: `view_image`
-- Skill: `image_generation`
+- Skill: `image-generation`
 
 ## Behavior
 
@@ -72,9 +72,9 @@ Run `/reload` after installing into an active session.
 Package metadata:
 
 - Package name: `@capyup/pi-codex-image`
-- Version: `0.2.1`
+- Version: `0.2.2`
 - Repository: `https://github.com/capyup/pi-codex-image`
 - Extension entry: `extensions/codex-image.ts`
-- Skill directory: `skills/image_generation`
+- Skill directory: `skills/image-generation`
 
 When syncing with upstream, compare against `pi-codex-conversion`'s `image-generation-tool.ts`, `view-image-tool.ts`, and dynamic tool routing in `index.ts`.

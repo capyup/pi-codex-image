@@ -1,5 +1,5 @@
 ---
-name: image_generation
+name: image-generation
 description: Generate images with the Codex native image_generation tool and inspect local images with view_image when the current model supports those capabilities. Use when the user asks for AI-created bitmap visuals, photos, illustrations, mockups, variants, reference-image inspection, or local image viewing.
 ---
 

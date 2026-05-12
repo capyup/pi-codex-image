@@ -1,6 +1,6 @@
 {
   "name": "@capyup/pi-codex-image",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "Pi package that exposes Codex-style image_generation and view_image tools with dynamic model routing.",
   "author": "capyup",

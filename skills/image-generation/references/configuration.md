@@ -1,6 +1,6 @@
 # Configuration
 
-The package provides the `image_generation` and `view_image` extension tools plus the `image_generation` skill.
+The package provides the `image_generation` and `view_image` extension tools plus the `image-generation` skill.
 
 ## Provider support
 
