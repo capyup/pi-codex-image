@@ -1,79 +1,80 @@
-# pi-codex-imagegen
+# pi-codex-image
 
-Pi package that adds Codex-backed image generation through `gpt-image-2`.
+Contributes the image portion of [IgorWarzocha/pi-codex-conversion](https://github.com/IgorWarzocha/pi-codex-conversion) as a focused Pi package. Current release version: `0.2.0`.
+
+This package ports the Codex-style `image_generation` and `view_image` capabilities without replacing Pi's full tool surface.
 
 It provides:
 
-- Extension tool: `codex_image_generate`
-- Slash command: `/imagegen`
-- Skill: `codex-imagegen`
+- Extension tool: `image_generation`
+- Extension tool: `view_image`
+- Skill: `image_generation`
 
-The tool calls the Responses API `image_generation` built-in tool with the current `gpt-5.x` host model when available (or `gpt-5.4` by default) and `model: "gpt-image-2"` inside the image tool spec. It returns the generated image inline and can optionally save it to disk.
+## Behavior
+
+`pi-codex-image` dynamically routes tools based on the currently selected model:
+
+- `image_generation` is active only when the current provider is `openai-codex` and the selected model advertises image input support.
+- `view_image` is active for any selected model that advertises image input support.
+- Switching models triggers the router again, adding these tools when supported and removing them when unsupported.
+- Existing non-image active tools are preserved while image tools are added or removed.
+
+## Native image generation
+
+The `image_generation` tool mirrors `pi-codex-conversion`'s native-tool approach:
+
+1. The agent sees a function-style tool named `image_generation`.
+2. Before the provider request is sent, the extension rewrites that function tool into the OpenAI Codex Responses native tool:
+
+```json
+{ "type": "image_generation", "output_format": "png" }
+```
+
+3. The local function body is intentionally not used; if it executes locally, it throws an explanatory error.
+
+Generated image handling is therefore delegated to the active OpenAI Codex Responses provider, matching the referenced adapter's routing semantics.
+
+## View images
+
+`view_image` wraps Pi's native image reader and returns only image content to the model.
+
+Parameters:
+
+```json
+{
+  "path": "./local-image.png",
+  "detail": "original"
+}
+```
+
+- `path` is required and may be absolute or relative to the current working directory.
+- `detail: "original"` is exposed only for Codex-family image-capable models.
+- `file_path` and `image_path` are accepted as compatibility aliases and normalized to `path`.
 
 ## Install
 
+From a checkout:
+
 ```bash
-pi install /Users/lucas/pi-codex-imagegen
+pi install npm:@capyup/pi-codex-image
 ```
 
-Or try for a single session:
+For one session:
 
 ```bash
-pi -e /Users/lucas/pi-codex-imagegen
+pi -e /path/to/pi-codex-image
 ```
 
 Run `/reload` after installing into an active session.
 
-## Provider support
+## Development
 
-The backend always uses the current pi model provider. It is enabled only when the current provider is `openai` or `openai-codex` and the current model id matches `gpt-5.x` such as `gpt-5.4` or `gpt-5.5`.
+Package metadata:
 
-If the current provider/model does not match, `/imagegen` and `codex_image_generate` report that the current provider is unsupported instead of trying unrelated fallback credentials.
+- Package name: `@capyup/pi-codex-image`
+- Version: `0.2.0`
+- Repository: `https://github.com/capyup/pi-codex-image`
+- Extension entry: `extensions/codex-image.ts`
+- Skill directory: `skills/image_generation`
 
-## Slash command
-
-Ask the agent to generate an image. The command forwards your request to the agent, and the agent chooses tool parameters such as aspect ratio, quality, reference intent, transparency, and save mode.
-
-```text
-/imagegen --square --high a cute capybara relaxing in a warm hot spring, cozy digital illustration, no text
-```
-
-Useful flags:
-
-```text
-/imagegen --landscape --save project a cinematic alpine cabin at sunrise
-/imagegen --portrait --ref ./source.png --intent edit turn this into a rainy neon street scene
-/imagegen --help
-```
-
-The command tells the agent to default to `save: "project"`, so output files land in `<cwd>/.pi/generated-images/` unless you ask for another save mode. The tool itself also defaults to project saving.
-
-## Tool examples
-
-Simple generation:
-
-```json
-{
-  "prompt": "A cute capybara relaxing in a warm hot spring, cozy digital illustration, soft steam, no text, no watermark",
-  "aspectRatio": "square",
-  "quality": "medium",
-  "save": "project"
-}
-```
-
-Reference edit:
-
-```json
-{
-  "prompt": "Edit the source image into a rainy neon street scene while keeping the main subject recognizable.",
-  "referenceImages": ["/absolute/path/to/source.png"],
-  "referenceIntent": "edit",
-  "aspectRatio": "portrait",
-  "quality": "high",
-  "save": "project"
-}
-```
-
-## Config
-
-See `skills/codex-imagegen/references/configuration.md`.
+When syncing with upstream, compare against `pi-codex-conversion`'s `image-generation-tool.ts`, `view-image-tool.ts`, and dynamic tool routing in `index.ts`.

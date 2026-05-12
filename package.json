@@ -1,35 +1,46 @@
 {
-  "name": "pi-codex-imagegen",
-  "version": "0.1.0",
+  "name": "@capyup/pi-codex-image",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Pi package that adds a Codex-backed gpt-image-2 image generation tool and skill.",
+  "description": "Pi package that exposes Codex-style image_generation and view_image tools with dynamic model routing.",
+  "author": "capyup",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lulucatdev/pi-codex-imagegen.git"
+    "url": "https://github.com/capyup/pi-codex-image"
   },
   "bugs": {
-    "url": "https://github.com/lulucatdev/pi-codex-imagegen/issues"
+    "url": "https://github.com/capyup/pi-codex-image/issues"
   },
-  "homepage": "https://github.com/lulucatdev/pi-codex-imagegen#readme",
+  "homepage": "https://github.com/capyup/pi-codex-image#readme",
   "keywords": [
     "pi-package",
+    "pi",
     "pi-extension",
+    "pi-skill",
     "image-generation",
     "codex",
-    "gpt-image-2"
+    "view-image"
   ],
+  "files": [
+    "extensions/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "pi": {
     "extensions": [
-      "./extensions/codex-imagegen.ts"
+      "./extensions/codex-image.ts"
     ],
     "skills": [
       "./skills"
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
+    "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   }
 }

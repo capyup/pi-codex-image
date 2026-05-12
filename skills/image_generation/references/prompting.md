@@ -11,7 +11,8 @@ Primary request: a cute capybara relaxing in a warm hot spring
 Style/medium: cozy polished digital illustration
 Composition/framing: square image, capybara centered, generous padding
 Lighting/mood: warm golden-hour light, calm, soft steam
-Constraints: no text, no watermark
+Visible text: none requested
+Constraints: no watermark
 ```
 
 ## Reference images
@@ -22,6 +23,16 @@ When references are present, describe the intended final image, not just the ref
 - `style_reference`: "Create a new city street scene using the same watercolor texture and muted palette as the reference."
 - `subject_reference`: "Draw the same cat as a small astronaut; keep the face and markings recognizable."
 - `compose`: "Combine the product from image 1 with the desk scene from image 2 into one realistic ad photo."
+
+## Text handling
+
+Treat visible text as a supported feature, not a weakness to work around.
+
+- If the user asks for a cover, poster, social graphic, title, label, or typography, include the exact visible text in quotes.
+- Specify language, placement, hierarchy, and style, for example: `large hand-lettered Chinese title at the top: "从量税返还"`.
+- Use `quality: "high"` for text-heavy assets or any image where exact lettering matters.
+- Use `no text` only when the user explicitly wants a wordless image, a background plate for later layout, or a cutout/icon without lettering.
+- If exact spelling is mission-critical, inspect the generated image and iterate rather than assuming text must be removed from the prompt.
 
 ## Transparent or cutout output
 
@@ -52,7 +63,7 @@ No cast shadow, no contact shadow, no reflection, no watermark, and no text unle
 
 ## Avoid
 
-- Do not add logos, text, watermarks, extra people, or extra objects unless requested.
-- Do not invent brand names or slogans.
+- Do not add unintended logos, watermarks, extra people, or extra objects.
+- Do not invent brand names, slogans, or body copy; use only requested or context-supported wording.
 - Do not claim exact pixel preservation for masked edits; image masks are guidance.
 - Do not overwrite files unless explicitly asked.
